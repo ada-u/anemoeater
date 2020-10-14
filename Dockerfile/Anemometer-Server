@@ -25,6 +25,7 @@ RUN patch /etc/php.ini /opt/setup/php.ini.patch
 RUN patch /var/www/html/anemometer/lib/Anemometer.php /opt/setup/Anemometer.patch
 
 EXPOSE 80
+EXPOSE 3306
 CMD chown -R mysql. /var/lib/mysql && \
     /etc/init.d/mysql start && \
     /etc/init.d/httpd start && \
