@@ -1,5 +1,4 @@
-#!/usr/bin/perl
-
+#!/usr/bin/env perl
 ########################################################################
 # Copyright (C) 2016, 2020  yoku0825
 # Copyright (C) 2018,       yokogawa-k
@@ -118,23 +117,24 @@ if ($opt->{docker})
     $repository= "yoku0825/anemoeater";
   }
 
-  my $container_id= `sudo docker run -d -P $repository`;
+  # todo: fix
+  my $container_id = substr(`sudo docker run -d -p 8080:80 -p 33060:3306 -P $repository`, 0, 12);
   chomp($container_id);
 
   my $container_ipaddr= `sudo docker inspect -f '{{.NetworkSettings.IPAddress}}' $container_id`;
   chomp($container_ipaddr);
 
-  my $publish_port= `sudo docker inspect $container_id | awk '/HostPort/{print \$2}' | tr -d \\"`;
-  chomp($publish_port);
+  my $container_port = 33060;
+  printf("Complete inspecting docker network\n");
 
   ### wait container's mysqld starts to run
-  my $max_retry= 10;
+  my $max_retry= 30;
   my $retry= 0;
   while ()
   {
     eval
     {
-      my $conn= DBI->connect("dbi:mysql:;host=$container_ipaddr", "anemometer", "",
+      my $conn= DBI->connect("dbi:mysql:;host=127.0.0.1;port=$container_port", "anemometer", "",
                              {RaiseError => 1, PrintError => 0});
       $conn->do("SELECT CURRENT_USER()");
     };
@@ -159,7 +159,7 @@ if ($opt->{docker})
   $opt->{port}    = undef;
 
   printf("Docker container starts with %s.\n", $container_ipaddr);
-  printf("URL will be http://%s:%d/anemometer\n", $ipaddr, $publish_port);
+  printf("URL will be http://%s:%d/anemometer\n", $ipaddr, 8080);
 }
 
 my $pt_dsn= "D=slow_query_log";
@@ -273,12 +273,14 @@ foreach my $file (@files)
   
   
   ### Update hostname_max by filename.
-  my $dsn     = "dbi:mysql:slow_query_log";
-  $dsn       .= sprintf(";host=%s", $opt->{host}) if $opt->{host};
-  $dsn       .= sprintf(";port=%d", $opt->{port}) if $opt->{port};
+  #my $dsn     = "dbi:mysql:slow_query_log";
+  #$dsn       .= sprintf(";host=%s", $opt->{host}) if $opt->{host};
+  #$dsn       .= sprintf(";port=%d", $opt->{port}) if $opt->{port};
+  my $dsn = "dbi:mysql:slow_query_log;host=127.0.0.1;port=33060";
+
   my $user    = $opt->{user} ? $opt->{user} : "anemometer";
   my $password= $opt->{password} ? $opt->{password} : "";
-  
+
   my $conn= DBI->connect($dsn, $user, $password, {mysql_use_utf8 => 1});
   $conn->do("UPDATE global_query_review_history SET hostname_max= REPLACE(?, '.log', '') WHERE hostname_max= ?",
             undef,
@@ -374,9 +376,16 @@ sub send_pt_qd
 
 sub count_cpu_thread
 {
-  my $thread= `grep processor /proc/cpuinfo | tail -1 | awk '{print \$3}'`;
-  chomp($thread);
+  # on Linux
+  if (-f '/proc/cpuinfo') {
+    my $thread= `grep processor /proc/cpuinfo | tail -1 | awk '{print \$3}'`;
+    chomp($thread);
 
-  return $thread ? $thread : 1;
+    return $thread ? $thread : 1;
+  }
+
+  # on MacOS
+  # todo: Get cpuinfo via `system_profiler`
+  return 1;
 }
 
